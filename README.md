@@ -1,5 +1,7 @@
 # Shopify_Relational_Database
-Using python class structure to load, read and reformat the standard data recieved from the Shopify admin page into tables following relational database schema. Accepts csv or xlsx. As an extra challenge no pandas is used. 
+Using python class structure to load, read and reformat the standard data recieved from the Shopify admin page into tables following relational database schema. Accepts csv or xlsx.
+
+Project is being completed entirely in PyCharm and without the use of pandas.
 
 [In progress]
 

@@ -28,11 +28,14 @@ class FileGrouper:
 
 
         # Generate enumerated tables from files or from order
-        self.productRelation = self.createProductRelational()
-        self.customerRelation = self.createCustomerRelational()
-        self.employeeRelation = self.createEmployeeRelational()
+        self.productBase = self.createProductBase()
+        self.customerBase = self.createCustomerBase()
+        self.employeeBase = self.createEmployeeBase()
 
-        self.orderRelation = self.createOrderRelational()
+        self.productAttribute = self.createProductAttribute()
+        self.attributeValues = self.createAttributeValues()
+
+        self.orderBase = self.createOrderBase()
         self.transRelation = self.createTransRelational()
 
         # Populate enumerated tables with data from orders
@@ -98,7 +101,7 @@ class FileGrouper:
 
 
 
-    def createProductRelational(self):
+    def createProductBase(self):
         productRelation = []
         self.productHeaders = ['Product_Id', 'Title']
 
@@ -119,22 +122,79 @@ class FileGrouper:
 
     def createProductAttribute(self):
         productAttribute = []
-        self.productAttributeHeaders = ['Product_Id', 'Attribute_Id', 'Name']
+        self.productAttributeHeaders = ['Attribute_Id', 'Product_Id', 'Name']
 
-        for row in enumerate(self.productData.data):
-            tempRow = [row['Title'], row['Option1 Name'], row['Option1 Name']]
+        idx = 0
 
-            productAttribute.append(tempRow)
+        for row in self.productData.data:
+
+            if row['Option1 Name']:
+                idx += 1
+                tempRow = [idx, row['Title'], row['Option1 Name']]
+
+                if self.dataType == ROW_TYPE_DICT:
+                    tempRow = {header: val for header, val in zip(self.productAttributeHeaders, tempRow)}
+
+                productAttribute.append(tempRow)
 
 
-    def createVariantRelational(self):
-        variantRelation = []
-        self.variantHeaders = ['']
+
+        productAttribute = self.replaceIds(productAttribute, ['Product_Id', 'Title'], self.productBase)
+
+        return productAttribute
+
+    def createAttributeValues(self):
+        attributeValues = []
+        self.attributeValuesHeaders = ['Value_Id', 'Product_Id', 'Attribute_Id', 'Value']
+
+        idx = 0
+        for row in self.productData.data:
+
+            if row['Option1 Value']:
+
+                idx += 1
+
+                if row['Option1 Name'] is None:
+                    attribute = previousAttribute
+                else:
+                    attribute = row['Option1 Name']
+                    previousAttribute = row['Option1 Name']
+
+                if row['Title'] is None:
+                    title = previousTitle
+                else:
+                    title = row['Title']
+                    previousTitle = row['Title']
 
 
-    def createCustomerRelational(self):
-        customerRelation = []
-        self.customerHeaders = ['Customer_Id', 'Email', 'Name', 'City', 'Province']
+                tempRow = [idx, title, attribute, row['Option1 Value']]
+
+
+                if self.dataType == ROW_TYPE_DICT:
+                    tempRow = {header: val for header, val in zip(self.attributeValuesHeaders, tempRow)}
+
+                attributeValues.append(tempRow)
+
+        attributeValues = self.replaceIds(attributeValues, ['Product_Id', 'Title'], self.productBase)
+
+        attributeDict = {}
+
+        for row in self.productAttribute:
+            attributeDict[row['Product_Id']] = row['Attribute_Id']
+
+        # Retrieve attribute Id based on product Id
+        for row in attributeValues:
+            row['Attribute_Id'] = attributeDict[row['Product_Id']]
+
+            del row['Product_Id']
+
+        return attributeValues
+
+
+
+    def createCustomerBase(self):
+        customerBase = []
+        self.customerHeaders = ['Customer_Id', 'Email', 'First_Name', 'Last_Name', 'City', 'Province']
 
         try:
             customerList = [row['Email'] for row in self.customerData.data]
@@ -146,18 +206,24 @@ class FileGrouper:
 
             for row in self.orderData.data:
                 if row['Email'] == customer:
-                    customerRow.append(row['Billing Name'])
+
+                    try:
+                        firstName, lastName = row['Billing Name'].split(' ')
+                    except:
+                        firstName, lastName = None, None
+                    customerRow.append(firstName)
+                    customerRow.append(lastName)
                     customerRow.append(row['Billing City'])
                     customerRow.append(row['Billing Province'])
 
             if self.dataType == ROW_TYPE_DICT:
                 customerRow = {header: val for header, val in zip(self.customerHeaders, customerRow)}
 
-            customerRelation.append(customerRow)
+            customerBase.append(customerRow)
 
-        return customerRelation
+        return customerBase
 
-    def createEmployeeRelational(self):
+    def createEmployeeBase(self):
         employeeRelation = []
         self.employeeHeaders = ['Employee_Id', 'Name']
 
@@ -175,7 +241,7 @@ class FileGrouper:
 
 
 
-    def createOrderRelational(self):
+    def createOrderBase(self):
         orderRelation = []
 
         self.orderHeaders = ['Order_Id', 'Customer_Id', 'Shipping_Method', 'Total_Paid', 'Paid_Datetime', 'Employee_Id', 'Total_Items']
@@ -219,8 +285,8 @@ class FileGrouper:
             except ValueError:
                 pass
 
-        orderRelation = self.replaceIds(orderRelation, ['Customer_Id', 'Email'], self.customerRelation)
-        orderRelation = self.replaceIds(orderRelation, ['Employee_Id', 'Name'], self.employeeRelation)
+        orderRelation = self.replaceIds(orderRelation, ['Customer_Id', 'Email'], self.customerBase)
+        orderRelation = self.replaceIds(orderRelation, ['Employee_Id', 'Name'], self.employeeBase)
 
 
         return orderRelation
@@ -233,19 +299,18 @@ class FileGrouper:
         idColumn, nameColumn = columns
 
         for row in targetIds:
-            idDict[row[idColumn]] = row[nameColumn]
+            idDict[row[nameColumn]] = row[idColumn]
 
+        idList = []
 
-        valueList = [row[idColumn] for row in data]
+        for row in data:
+            try:
+                currentId = idDict[row[idColumn]]
+            except:
+                currentId = None
+            idList.append(currentId)
 
-        for key, value in idDict.items():
-            if value not in valueList:
-                continue
-
-            index = valueList.index(value)
-            valueList[index] = key
-
-        for Id, row in zip(valueList, data):
+        for Id, row in zip(idList, data):
             row[idColumn] = Id
 
         return data
@@ -280,10 +345,10 @@ class FileGrouper:
                 productVarient = None
 
             row['Product_Id'] = productTitle
-            row['Variant_Id'] = productVarient
+            row['Attribute_Id'] = productVarient
 
-        transRelation = self.replaceIds(transRelation, ['Product_Id', 'Title'], self.productRelation)
-        transRelation = self.replaceIds(transRelation, ['Variant_Id', 'Variant'])
+        transRelation = self.replaceIds(transRelation, ['Product_Id', 'Title'], self.productBase)
+        transRelation = self.replaceIds(transRelation, ['Attribute_Id', 'Value'], self.attributeValues)
 
         print('hi')
         return transRelation

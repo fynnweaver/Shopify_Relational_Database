@@ -1,7 +1,7 @@
 from datetime import datetime
 from dateutil.parser import parse
 
-DATA_FILE_PATH = r'C:/Users/fynn/Documents/Code_Projects/shopify_analysis_excel/files/'
+DATA_FILE_PATH = r'C:/Users/fynn/Documents/Code_Projects/Shopify_Relational_Database/files/'
 
 ROW_TYPE_DICT = 'dict'
 ROW_TYPE_LIST = 'list'

@@ -2,6 +2,7 @@ from importer import *
 from importer.filesImport import FilesImporter
 
 import os
+from collections import Counter
 
 class FileGrouper:
 
@@ -29,24 +30,27 @@ class FileGrouper:
 
         # Generate enumerated tables from files or from order
         self.productBase = self.createProductBase()
-        self.customerBase = self.createCustomerBase()
-        self.employeeBase = self.createEmployeeBase()
 
         self.productAttribute = self.createProductAttribute()
         self.attributeValues = self.createAttributeValues()
 
         self.orderBase = self.createOrderBase()
-        self.transRelation = self.createTransRelational()
+        self.transBase = self.createTransBase()
 
-        # Populate enumerated tables with data from orders
+        self.customerBase = self.createCustomerBase()
+        self.employeeBase = self.createEmployeeBase()
 
-        #self.orderRelational = self.createOrderRelational()
-
+        #replace IDs using now complete tables
+        self.orderBase = self.replaceIds(self.orderBase, ['Customer_Id', 'Email'], self.customerBase)
+        self.orderBase = self.replaceIds(self.orderBase, ['Employee_Id', 'Name'], self.employeeBase)
+        self.transBase = self.replaceIds(self.transBase, ['Product_Id', 'Title'], self.productBase)
+        self.transBase = self.replaceIds(self.transBase, ['Attribute_Id', 'Value'], self.attributeValues)
+        print('hi')
 
 
     def getOrderData(self, filePath, rowDataType=ROW_TYPE_DICT):
         # Orders
-        orderHeaders = ['Name', 'Email', 'Shipping Method', 'Total', 'Paid at', 'Lineitem name', 'Lineitem price', 'Billing Name', 'Billing City', 'Billing Province', 'Employee']
+        orderHeaders = ['Name', 'Email', 'Shipping Method', 'Total', 'Paid at', 'Lineitem name', 'Lineitem quantity', 'Lineitem price', 'Billing Name', 'Billing City', 'Billing Province', 'Employee']
         orderTypes = {
             'Total': float,
             'Paid at': safeDateTimeParse,
@@ -192,59 +196,11 @@ class FileGrouper:
 
 
 
-    def createCustomerBase(self):
-        customerBase = []
-        self.customerHeaders = ['Customer_Id', 'Email', 'First_Name', 'Last_Name', 'City', 'Province']
-
-        try:
-            customerList = [row['Email'] for row in self.customerData.data]
-        except AttributeError:
-            customerList = [row['Email'] for row in self.orderData.data]
-
-        for Id, customer in enumerate(set(customerList)):
-            customerRow = [Id, customer]
-
-            for row in self.orderData.data:
-                if row['Email'] == customer:
-
-                    try:
-                        firstName, lastName = row['Billing Name'].split(' ')
-                    except:
-                        firstName, lastName = None, None
-                    customerRow.append(firstName)
-                    customerRow.append(lastName)
-                    customerRow.append(row['Billing City'])
-                    customerRow.append(row['Billing Province'])
-
-            if self.dataType == ROW_TYPE_DICT:
-                customerRow = {header: val for header, val in zip(self.customerHeaders, customerRow)}
-
-            customerBase.append(customerRow)
-
-        return customerBase
-
-    def createEmployeeBase(self):
-        employeeRelation = []
-        self.employeeHeaders = ['Employee_Id', 'Name']
-
-        employeeList = [row['Employee'] for row in self.orderData.data]
-
-        for Id, customer in enumerate(set(employeeList)):
-            employeeRow = [Id, customer]
-
-            if self.dataType == ROW_TYPE_DICT:
-                employeeRow = {header: val for header, val in zip(self.employeeHeaders, employeeRow)}
-
-            employeeRelation.append(employeeRow)
-
-        return employeeRelation
-
-
-
     def createOrderBase(self):
         orderRelation = []
 
-        self.orderHeaders = ['Order_Id', 'Customer_Id', 'Shipping_Method', 'Total_Paid', 'Paid_Datetime', 'Employee_Id', 'Total_Items']
+        self.orderHeaders = ['Order_Id', 'Customer_Id', 'Shipping_Method', 'Total_Paid', 'Paid_Datetime', 'Employee_Id',
+                             'Total_Items']
 
         numberItems = 0
 
@@ -258,12 +214,13 @@ class FileGrouper:
             if idx == 0:
                 startID = row['Name']
                 rowTemp = [startID, row['Email'], row['Shipping Method'], row['Total'], row['Paid at'], row['Employee']]
-
+                numberItems = int(row['Lineitem quantity'])
 
             # After first row set current ID and increase number items for every new row
             else:
                 currentID = row['Name']
-                numberItems += 1
+                productQuantity = int(row['Lineitem quantity'])
+                numberItems += productQuantity  # [lineitem quantity is corresponding to previous row for some reason making issues what quanitity is over 1]
 
                 # Once ID is no longer equal to start ID append number of items, row and reset for next transaction
                 if currentID != startID:
@@ -276,7 +233,7 @@ class FileGrouper:
 
                     orderRelation.append(rowTemp)
                     rowTemp = [currentID, row['Email'], row['Shipping Method'], row['Total'], row['Paid at'],
-                                 row['Employee']]
+                               row['Employee']]
                     startID = currentID
 
         for row in orderRelation:
@@ -285,11 +242,139 @@ class FileGrouper:
             except ValueError:
                 pass
 
-        orderRelation = self.replaceIds(orderRelation, ['Customer_Id', 'Email'], self.customerBase)
-        orderRelation = self.replaceIds(orderRelation, ['Employee_Id', 'Name'], self.employeeBase)
-
-
         return orderRelation
+
+    def createTransBase(self):
+        transRelation = []
+
+        self.transHeaders = ['Transaction_Id', 'Order_Id', 'Product_Id', 'Product_Quantity', 'PPU']
+
+        for idx, row in enumerate(self.orderData.data):
+            rowTemp = [idx, row['Name'], row['Lineitem name'], row['Lineitem quantity'], row['Lineitem price']]
+
+            if self.dataType == ROW_TYPE_DICT:
+                rowTemp = {header: val for header, val in zip(self.transHeaders, rowTemp)}
+
+            transRelation.append(rowTemp)
+
+        for row in transRelation:
+
+            try:
+                row['Order_Id'] = int(row['Order_Id'].replace('#', ''))
+            except ValueError:
+                pass
+
+            try:
+                productTitle = row['Product_Id'].split('-')[0].strip()
+                productVarient = row['Product_Id'].split('-')[1].strip()
+            except:
+                productTitle = row['Product_Id']
+                productVarient = None
+
+            row['Product_Id'] = productTitle
+            row['Attribute_Id'] = productVarient
+
+
+
+        print('hi')
+        return transRelation
+
+
+
+    def createCustomerBase(self):
+        customerBase = []
+        self.customerHeaders = ['Customer_Id', 'Email', 'First_Name', 'Last_Name', 'City', 'Province', 'Total_Orders']
+
+        # Generate list of unique customers and count frequency (aka number of orders)
+        customerList = [row['Customer_Id'] for row in self.orderBase]
+        customerOrders = Counter(customerList)
+
+        # Set ID and customerSpent dict
+        ID = 0
+        customerSpent = {}
+
+        # For each customer + purchase frequency pair create row with ID and customer email
+        for customer, totalOrders in customerOrders.items():
+            customerRow = [ID, customer]
+            ID += 1
+            customerSpent[customer] = 0 # set dict item with that customer email to 0
+
+            # For each row in data if the email is that of the current customer then...
+            for row in self.orderData.data:
+
+                if row['Email'] == customer:
+
+                    # ...Add order total to the spent dictionary under customer email key
+                    try:
+                        customerSpent[customer] += row['Total']
+                    except TypeError:
+                        customerSpent[customer] += 0
+
+                    # ...Split first and last name and append rest of the information
+                    try:
+                        firstName, lastName = row['Billing Name'].split(' ')
+                    except:
+                        firstName, lastName = None, None
+                    customerRow.append(firstName)
+                    customerRow.append(lastName)
+                    customerRow.append(row['Billing City'])
+                    customerRow.append(row['Billing Province'])
+                    customerRow.append(totalOrders)
+
+            # If dict is defined then
+            if self.dataType == ROW_TYPE_DICT:
+                customerRow = {header: val for header, val in zip(self.customerHeaders, customerRow)}
+
+            customerBase.append(customerRow)
+
+        # Append the total spent using the email key
+        for row in customerBase:
+            row['Total_Spent'] = round(customerSpent[row['Email']], 2)
+
+        return customerBase
+
+    def createEmployeeBase(self):
+        employeeBase = []
+        self.employeeHeaders = ['Employee_Id', 'Name', 'Total_Orders']
+
+        employeeList = [row['Employee_Id'] for row in self.orderBase]
+        employeeOrders = Counter(employeeList)
+
+        # Set ID and customerSpent dict
+        ID = 0
+        employeeSpent = {}
+
+        # For each customer + purchase frequency pair create row with ID and customer email
+        for employee, totalOrders in employeeOrders.items():
+            employeeRow = [ID, employee, totalOrders]
+            ID += 1
+            employeeSpent[employee] = 0  # set dict item with that customer email to 0
+
+            # For each row in data if the email is that of the current customer then...
+            for row in self.orderData.data:
+
+                if row['Employee'] == employee:
+
+                    # ...Add order total to the spent dictionary under customer email key
+                    try:
+                        employeeSpent[employee] += row['Total']
+                    except TypeError:
+                        employeeSpent[employee] += 0
+
+
+
+            if self.dataType == ROW_TYPE_DICT:
+                employeeRow = {header: val for header, val in zip(self.employeeHeaders, employeeRow)}
+
+            employeeBase.append(employeeRow)
+
+        for row in employeeBase:
+            row['Total_Spent'] = round(employeeSpent[row['Name']], 2)
+
+        return employeeBase
+
+
+
 
 
 
@@ -316,41 +401,5 @@ class FileGrouper:
         return data
 
 
-
-    def createTransRelational(self):
-        transRelation = []
-
-        self.transHeaders = ['Transaction_Id', 'Order_Id', 'Product_Id', 'Price_Paid']
-
-        for idx, row in enumerate(self.orderData.data):
-            rowTemp = [idx, row['Name'], row['Lineitem name'], row['Lineitem price']]
-
-            if self.dataType == ROW_TYPE_DICT:
-                rowTemp = {header: val for header, val in zip(self.transHeaders, rowTemp)}
-
-            transRelation.append(rowTemp)
-
-        for row in transRelation:
-
-            try:
-                row['Order_Id'] = int(row['Order_Id'].replace('#', ''))
-            except ValueError:
-                pass
-
-            try:
-                productTitle = row['Product_Id'].split('-')[0].strip()
-                productVarient = row['Product_Id'].split('-')[1].strip()
-            except:
-                productTitle = row['Product_Id']
-                productVarient = None
-
-            row['Product_Id'] = productTitle
-            row['Attribute_Id'] = productVarient
-
-        transRelation = self.replaceIds(transRelation, ['Product_Id', 'Title'], self.productBase)
-        transRelation = self.replaceIds(transRelation, ['Attribute_Id', 'Value'], self.attributeValues)
-
-        print('hi')
-        return transRelation
 
 

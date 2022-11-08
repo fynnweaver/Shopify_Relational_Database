@@ -7,4 +7,4 @@ Project is being completed entirely in PyCharm and without the use of pandas.
 
 See planned schema for the output tables below. Green tables refer to those that are complete while orange are those still in progress.
 
-![Schema_version1](https://github.com/fynnweaver/Shopify_Relational_Database/blob/main/extras/SchemaV1.png)
+![Schema_version1](https://github.com/fynnweaver/Shopify_Relational_Database/blob/main/extras/SchemaV2.png)

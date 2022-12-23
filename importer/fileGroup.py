@@ -3,6 +3,7 @@ from importer.filesImport import FilesImporter
 
 import os
 from collections import Counter
+from statistics import median, mean
 
 class FileGrouper:
 
@@ -342,25 +343,37 @@ class FileGrouper:
 
         # Set ID and customerSpent dict
         ID = 0
-        employeeSpent = {}
+        employeeEarned = {}
+        employeePerOrder = {}
+        employeeItems = {}
 
-        # For each customer + purchase frequency pair create row with ID and customer email
+        # For each employee + purchase frequency pair create row with ID and customer email
         for employee, totalOrders in employeeOrders.items():
             employeeRow = [ID, employee, totalOrders]
             ID += 1
-            employeeSpent[employee] = 0  # set dict item with that customer email to 0
+            employeeEarned[employee] = 0  # set dict item with that employee email to 0 to track total earned
+            employeePerOrder[employee] = []  # set per order as empty list
+            employeeItems[employee] = []
 
-            # For each row in data if the email is that of the current customer then...
+            # For each row in data if the email is that of the current employee then...
             for row in self.orderData.data:
 
                 if row['Employee'] == employee:
 
-                    # ...Add order total to the spent dictionary under customer email key
+                    # ...Add order total to the spent dictionary & per order list under employee email key
                     try:
-                        employeeSpent[employee] += row['Total']
+                        employeeEarned[employee] += row['Total']
+                        employeePerOrder[employee].append(row['Total'])
                     except TypeError:
-                        employeeSpent[employee] += 0
+                        employeeEarned[employee] += 0
 
+
+            # Use orderBase table for total items in each order
+            for row in self.orderBase:
+
+                if row['Employee_Id'] == employee:
+
+                    employeeItems[employee].append(row['Total_Items'])
 
 
             if self.dataType == ROW_TYPE_DICT:
@@ -368,8 +381,11 @@ class FileGrouper:
 
             employeeBase.append(employeeRow)
 
+        # Round and append total earned, total transactions and average item # per transaction
         for row in employeeBase:
-            row['Total_Spent'] = round(employeeSpent[row['Name']], 2)
+            row['Total_Earned'] = round(employeeEarned[row['Name']], 2)
+            row['MedianPerOrder'] = median(employeePerOrder[row['Name']])
+            row['MedianItemsPerOrder'] = median(employeeItems[row['Name']])
 
         return employeeBase
 
